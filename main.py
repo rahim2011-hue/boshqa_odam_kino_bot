@@ -671,7 +671,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
-        global catalog
+        
         catalog = [item for item in catalog if str(item.get("code")) != movie_code]
         save_data("catalog.json", catalog)
         
