@@ -1,10 +1,27 @@
 import os
 import json
+from threading import Thread
+from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
 TOKEN = "8048885469:AAEnaKkGkGk7ssR28fy6MjPW201YP1eSig8"
 ADMIN_ID = 6682139161
+
+# --- Flask veb-server (Render 24/7 ishlashi uchun) ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running 24/7!"
+
+def run_web():
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
+def keep_alive():
+    t = Thread(target=run_web)
+    t.start()
+# ----------------------------------------------------
 
 def load_data(filename, default):
     if os.path.exists(filename):
@@ -94,7 +111,6 @@ async def send_subscription_required(update_or_query, context, pending_code=None
                 channel_link = f"https://t.me/{clean_ch}" if not clean_ch.startswith("-") else url
                 keyboard_buttons.append([InlineKeyboardButton("📢 Kanalga obuna bo'lish", url=channel_link)])
     
-    # Qaysi kino kodi bilan kelgan bo'lsa, tekshiruv tugmasiga saqlab qo'yamiz
     cb_data = f"check_sub_{pending_code}" if pending_code else "check_sub"
     keyboard_buttons.append([InlineKeyboardButton("✅ Obunani tekshirish", callback_data=cb_data)])
     
@@ -114,7 +130,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     is_admin = (user.id in admins or user.id == ADMIN_ID)
 
-    # Agar startda kod bilan kelgan bo'lsa (masalan: /start 1)
     pending_code = None
     if context.args:
         arg = context.args[0].strip()
@@ -137,7 +152,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("👋 Xush kelibsiz, Hurmatli Admin!", reply_markup=ADMIN_KEYBOARD)
         return
 
-    # Agar obuna bo'lgan bo'lsa va kod bilan kirgan bo'lsa, darhol kinoni tashlaymiz
     if pending_code:
         found_movie = next((item for item in catalog if str(item.get("code")).strip() == pending_code), None)
         if found_movie:
@@ -238,7 +252,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             catalog.append(new_movie_item)
             save_data("catalog.json", catalog)
             
-            # Kanalga avtomatik jo'natish (Kodi bilan birga)
             channel_target_raw = vip_settings.get("channel_id", "-1003932364635").strip()
             if channel_target_raw:
                 try:
@@ -512,7 +525,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             try: await query.message.delete()
             except: pass
             
-            # Agar tekshirish tugmasida kino kodi ham biriktirilgan bo'lsa (masalan: check_sub_1)
             parts = data.split("_")
             if len(parts) > 2:
                 movie_code = parts[2]
@@ -659,29 +671,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
-        initial_len = len(catalog)
-        catalog[:] = [item for item in catalog if str(item.get("code")) != str(movie_code)]
-        if len(catalog) < initial_len:
-            save_data("catalog.json", catalog)
-            await query.message.edit_text("✅ Kino o'chirildi!", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
+        global catalog
+        catalog = [item for item in catalog if str(item.get("code")) != movie_code]
+        save_data("catalog.json", catalog)
+        
+        if not catalog:
+            await query.message.edit_text("✅ Kino o'chirildi.\n\n❌ Hozircha kinolar mavjud emas.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
+        else:
+            keyboard = []
+            for item in catalog:
+                c_code = item.get("code")
+                c_title = item.get("title")
+                keyboard.append([InlineKeyboardButton(f"🗑 {c_code} - {c_title}", callback_data=f"del_movie_{c_code}")])
+            keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")])
+            await query.message.edit_text(f"✅ Kino muvaffaqiyatli o'chirildi!\n\n🗑 O'chirmoqchi bo'lgan boshqa kinoni tanlang:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-    elif data == "add_admin":
-        context.user_data["state"] = "waiting_for_new_admin"
-        await query.message.edit_text("👮‍♂️ Admin ID raqamini yuboring:")
+def main():
+    # 24/7 ishlashi uchun Flask serverni ishga tushiramiz
+    keep_alive()
 
-    elif data == "list_admins":
-        await query.message.edit_text(f"📋 Adminlar ID: {', '.join(map(str, admins))}", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
+    application = ApplicationBuilder().token(TOKEN).build()
 
-    elif data == "change_vip_card":
-        context.user_data["state"] = "waiting_for_vip_card"
-        await query.message.edit_text("💳 Yangi karta raqamini kiriting:")
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button_handler))
+    application.add_handler(MessageHandler(filters.ALL & ~filters.COMMAND, handle_message))
+
+    print("Bot ishga tushdi...")
+    application.run_polling()
 
 if __name__ == "__main__":
-    app = ApplicationBuilder().token(TOKEN).build()
-    
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button_handler))
-    app.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.TEXT, handle_message))
-
-    print("🤖 Bot muvaffaqiyatli ishga tushdi!")
-    app.run_polling()
+    main()
