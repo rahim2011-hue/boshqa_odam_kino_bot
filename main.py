@@ -687,9 +687,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.edit_text(f"✅ Kino muvaffaqiyatli o'chirildi!\n\n🗑 O'chirmoqchi bo'lgan boshqa kinoni tanlang:", reply_markup=InlineKeyboardMarkup(keyboard))
 
 def main():
-    # 24/7 ishlashi uchun Flask serverni ishga tushiramiz
     keep_alive()
-
     application = ApplicationBuilder().token(TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
