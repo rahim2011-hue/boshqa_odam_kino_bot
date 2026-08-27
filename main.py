@@ -353,8 +353,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     admins.append(new_id)
                     save_data("admins.json", admins)
                     await update.message.reply_text("✅ Admin qo'shildi!", reply_markup=ADMIN_KEYBOARD)
+                else:
+                    await update.message.reply_text("⚠️ Bu foydalanuvchi allaqachon admin!", reply_markup=ADMIN_KEYBOARD)
             except:
-                await update.message.reply_text("❌ Xato ID.")
+                await update.message.reply_text("❌ Xato ID format! Faqat raqam kiriting.", reply_markup=ADMIN_KEYBOARD)
             return
 
         elif state == "waiting_for_vip_card":
@@ -553,6 +555,18 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         tg_channels_count = sum(1 for c in channels if isinstance(c, dict) and c.get("type", "tg") == "tg")
         await query.message.edit_text(f"📢 Majburiy obunadagi kanallar soni: {tg_channels_count} ta", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
 
+    elif data == "add_admin":
+        context.user_data["state"] = "waiting_for_new_admin"
+        await query.message.edit_text("👮‍♂️ Yangi adminning Telegram ID raqamini yuboring:")
+
+    elif data == "list_admins":
+        admin_list_str = "\n".join([f"🆔 `{a}`" for a in admins])
+        await query.message.edit_text(f"📋 Hozirgi adminlar ro'yxati:\n\n{admin_list_str}", parse_mode="Markdown", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
+
+    elif data == "change_vip_card":
+        context.user_data["state"] = "waiting_for_vip_card"
+        await query.message.edit_text("💳 Yangi karta raqamini kiriting:")
+
     elif data == "add_channel":
         context.user_data["state"] = "waiting_for_channel"
         await query.message.edit_text("📌 Kanal username yoki havolasini kiriting:")
@@ -631,7 +645,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
- 
+        
         catalog[:] = [item for item in catalog if str(item.get("code")) != movie_code]
         save_data("catalog.json", catalog)
         
