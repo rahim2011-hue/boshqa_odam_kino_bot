@@ -368,7 +368,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["state"] = None
             vip_settings["channel_id"] = text.strip()
             save_data("vip_settings.json", vip_settings)
-            await update.message.reply_text(f"✅ Kanal ulandi: {text}", reply_markup=ADMIN_KEYBOARD)
+            await update.message.reply_text(f"✅ Kino kanali ulandi: {text}", reply_markup=ADMIN_KEYBOARD)
             return
 
     if is_admin:
@@ -401,7 +401,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("📢 Kino kanali (ID kiritish)", callback_data="set_post_channel")],
                 [InlineKeyboardButton("🔙 Panel", callback_data="back_to_admin")]
             ])
-            await update.message.reply_text(f"ℹ️ Bot sozlamalari:\n\n📢 Hozirgi ulangan kanal: `{vip_settings.get('channel_id', 'Kiritilmagan ❌')}`", reply_markup=keyboard, parse_mode="Markdown")
+            await update.message.reply_text(f"ℹ️ Bot sozlamalari:\n\n📢 Hozirgi ulangan kino kanali: `{vip_settings.get('channel_id', 'Kiritilmagan ❌')}`", reply_markup=keyboard, parse_mode="Markdown")
             return
 
         elif text == "👥 Foydalanuvchilar":
@@ -615,7 +615,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "add_movie":
         context.user_data["state"] = "waiting_for_movie_file"
-        await query.message.edit_text("🎬 Kinoni yuboring:")
+        await query.message.edit_text("🎬 Kinoni video yoki fayl ko'rinishida yuboring:")
 
     elif data == "del_movie_menu":
         if not catalog:
@@ -631,8 +631,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
+        
+        # Ro'yxatni yangilash
         global catalog
-        catalog = [item for item in catalog if str(item.get("code")) != movie_code]
+        catalog[:] = [item for item in catalog if str(item.get("code")) != movie_code]
         save_data("catalog.json", catalog)
         
         if not catalog:
