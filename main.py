@@ -8,7 +8,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Cal
 TOKEN = "8048885469:AAEnaKkGkGk7ssR28fy6MjPW201YP1eSig8"
 ADMIN_ID = 6682139161
 
-# --- Flask veb-server (Render 24/7 ishlashi uchun) ---
+# --- Flask server (Render 24/7 ishlashi uchun) ---
 app = Flask('')
 
 @app.route('/')
@@ -41,10 +41,7 @@ catalog = load_data("catalog.json", [])
 channels = load_data("channels.json", []) 
 admins = load_data("admins.json", [ADMIN_ID])
 
-vip_settings = load_data("vip_settings.json", {"card": "8600 0000 0000 0000", "channel_id": "-1003932364635"})
-if not vip_settings.get("channel_id"):
-    vip_settings["channel_id"] = "-1003932364635"
-    save_data("vip_settings.json", vip_settings)
+vip_settings = load_data("vip_settings.json", {"card": "8600 0000 0000 0000", "channel_id": ""})
 
 bot_texts = load_data("bot_texts.json", {
     "start": "🎬 Xush kelibsiz! Kino yoki multfilm kodini yuboring.",
@@ -67,10 +64,9 @@ USER_KEYBOARD = ReplyKeyboardMarkup([
     [KeyboardButton("📞 Aloqa")]
 ], resize_keyboard=True)
 
-async def check_telegram_subscription(bot, user_id, context=None):
+async def check_telegram_subscription(bot, user_id):
     if user_id == ADMIN_ID or user_id in admins:
         return True
-
     if str(user_id) in users and users.get(str(user_id), {}).get("vip", False):
         return True
 
@@ -91,10 +87,9 @@ async def check_telegram_subscription(bot, user_id, context=None):
         except Exception as e:
             print(f"Obunani tekshirishda xatolik ({clean_ch}): {e}")
             return False
-            
     return True
 
-async def send_subscription_required(update_or_query, context, pending_code=None):
+async def send_subscription_required(update_or_query, pending_code=None):
     query = getattr(update_or_query, "callback_query", None)
     message = query.message if query else update_or_query.message
     
@@ -129,8 +124,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_data("users.json", users)
 
     is_admin = (user.id in admins or user.id == ADMIN_ID)
-
     pending_code = None
+
     if context.args:
         arg = context.args[0].strip()
         if arg.startswith("ref_"):
@@ -143,9 +138,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pending_code = arg
 
     if not is_admin:
-        is_subbed = await check_telegram_subscription(context.bot, user.id, context)
+        is_subbed = await check_telegram_subscription(context.bot, user.id)
         if not is_subbed:
-            await send_subscription_required(update, context, pending_code=pending_code)
+            await send_subscription_required(update, pending_code=pending_code)
             return
 
     if is_admin:
@@ -168,7 +163,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(bot_texts["start"], reply_markup=USER_KEYBOARD)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
+    user = update.effective_user
+    user_id = user.id
     is_admin = (user_id in admins or user_id == ADMIN_ID)
     text = update.message.text.strip() if update.message.text else ""
     
@@ -252,14 +248,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             catalog.append(new_movie_item)
             save_data("catalog.json", catalog)
             
-            channel_target_raw = vip_settings.get("channel_id", "-1003932364635").strip()
+            # Kanalga tashlash
+            channel_target_raw = str(vip_settings.get("channel_id", "")).strip()
             if channel_target_raw:
                 try:
                     bot_info = await context.bot.get_me()
                     bot_username = bot_info.username
                     
                     caption = f"🎬 {movie_title}\n📌 Kod: {new_code}\n\n🤖 Bizning bot: @{bot_username}\n👇 Ko'rish uchun quyidagi tugmani bosing:"
-                    
                     keyboard = InlineKeyboardMarkup([
                         [InlineKeyboardButton("▶️ Ko'rish uchun bosing", url=f"https://t.me/{bot_username}?start={new_code}")]
                     ])
@@ -276,10 +272,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     else:
                         await context.bot.send_document(chat_id=channel_chat_id, document=prev_id, caption=caption, reply_markup=keyboard)
                 except Exception as e:
-                    print(f"Kanalga tashlashda xatolik: {e}")
+                    print(f"Kanalga tashlashda xatolik (Botni kanalga admin qilganingizni va ID to'g'riligini tekshiring!): {e}")
 
             context.user_data["state"] = None
-            await update.message.reply_text(f"✅ Kino muvaffaqiyatli qo'shildi va saqlandi!\n📌 Kod: {new_code}", reply_markup=ADMIN_KEYBOARD)
+            await update.message.reply_text(f"✅ Kino muvaffaqiyatli qo'shildi va kanalga yuborildi!\n📌 Kod: {new_code}", reply_markup=ADMIN_KEYBOARD)
             return
 
         elif state == "waiting_for_ad":
@@ -373,7 +369,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["state"] = None
             vip_settings["channel_id"] = text.strip()
             save_data("vip_settings.json", vip_settings)
-            await update.message.reply_text(f"✅ Kinolar tashlanadigan kanal ulandi: {text}", reply_markup=ADMIN_KEYBOARD)
+            await update.message.reply_text(f"✅ Kinolar avtomatik tashlanadigan kanal ulandi: {text}\n\nEndi yangi kino qo'shsangiz shu kanalga o'zi boradi!", reply_markup=ADMIN_KEYBOARD)
             return
 
     if is_admin:
@@ -403,10 +399,10 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("📢 Obuna matni", callback_data="set_sub_text")],
                 [InlineKeyboardButton("❌ Topilmadi matni", callback_data="set_not_found_text")],
                 [InlineKeyboardButton("💎 VIP tariflar", callback_data="set_vip_text")],
-                [InlineKeyboardButton("📢 Kino kanali", callback_data="set_post_channel")],
+                [InlineKeyboardButton("📢 Kino kanali (ID kiritish)", callback_data="set_post_channel")],
                 [InlineKeyboardButton("🔙 Panel", callback_data="back_to_admin")]
             ])
-            await update.message.reply_text("ℹ️ Bot matnlari va sozlamalari:", reply_markup=keyboard)
+            await update.message.reply_text(f"ℹ️ Bot sozlamalari:\n\n📢 Hozirgi ulangan kanal ID/Username: `{vip_settings.get('channel_id', 'Kiritilmagan ❌')}`", reply_markup=keyboard, parse_mode="Markdown")
             return
 
         elif text == "👥 Foydalanuvchilar":
@@ -450,9 +446,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
     if not is_admin:
-        is_subbed = await check_telegram_subscription(context.bot, user_id, context)
+        is_subbed = await check_telegram_subscription(context.bot, user_id)
         if not is_subbed:
-            await send_subscription_required(update, context)
+            await send_subscription_required(update)
             return
 
     user_id_str = str(user_id)
@@ -481,7 +477,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     elif text == "👤 Profil":
         is_vip = users.get(user_id_str, {}).get("vip", False)
-        await update.message.reply_text(f"👤 Profil:\n🆔 ID: {user_id}\n👤 Ism: {update.effective_user.full_name}\n💎 VIP: {'Ha ✅' if is_vip else 'Yo\'q ❌'}")
+        await update.message.reply_text(f"👤 Profil:\n🆔 ID: {user_id}\n👤 Ism: {user.full_name}\n💎 VIP: {'Ha ✅' if is_vip else 'Yo\'q ❌'}")
         return
     elif text == "📞 Aloqa":
         await update.message.reply_text("📞 Admin bilan bog'lanish uchun: @proactive_11")
@@ -496,14 +492,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ])
         for adm in admins:
             try:
-                await context.bot.send_photo(chat_id=adm, photo=photo_file_id, caption=f"📩 Yangi VIP to'lov cheki!\n\n👤 Foydalanuvchi: {update.effective_user.full_name}\n🆔 ID: {user_id}", reply_markup=admin_markup, parse_mode="Markdown")
+                await context.bot.send_photo(chat_id=adm, photo=photo_file_id, caption=f"📩 Yangi VIP to'lov cheki!\n\n👤 Foydalanuvchi: {user.full_name}\n🆔 ID: {user_id}", reply_markup=admin_markup)
             except:
                 pass
         await update.message.reply_text("✅ Chekingiz adminga yuborildi! Tez orada tekshirib tasdiqlashadi.")
         return
 
     found_movie = next((item for item in catalog if str(item.get("code")).strip().lower() == text.lower()), None)
-    
     if found_movie:
         await update.message.reply_video(
             video=found_movie["file_id"], 
@@ -521,7 +516,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     is_admin = (user_id in admins or user_id == ADMIN_ID)
 
     if data.startswith("check_sub"):
-        if await check_telegram_subscription(context.bot, user_id, context):
+        if await check_telegram_subscription(context.bot, user_id):
             try: await query.message.delete()
             except: pass
             
@@ -651,7 +646,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "set_post_channel":
         context.user_data["state"] = "waiting_for_post_channel"
-        await query.message.edit_text("📢 Kinolar avtomatik tashlanadigan kanal username yoki ID sini kiriting (masalan: @kanal_username):", parse_mode="Markdown")
+        await query.message.edit_text("📢 Kinolar avtomatik tashlanadigan kanal username yoki ID sini kiriting (masalan: `@kanal_username` yoki `-100...`):", parse_mode="Markdown")
 
     elif data == "add_movie":
         context.user_data["state"] = "waiting_for_movie_file"
@@ -671,7 +666,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
-        
+        global catalog
         catalog = [item for item in catalog if str(item.get("code")) != movie_code]
         save_data("catalog.json", catalog)
         
