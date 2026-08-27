@@ -89,31 +89,6 @@ async def check_telegram_subscription(bot, user_id):
             return False
     return True
 
-async def send_subscription_required(update_or_query, pending_code=None):
-    query = getattr(update_or_query, "callback_query", None)
-    message = query.message if query else update_or_query.message
-    
-    keyboard_buttons = []
-    for ch in channels:
-        if not isinstance(ch, dict):
-            continue
-        if ch.get("type") == "social":
-            keyboard_buttons.append([InlineKeyboardButton(f"🌐 {ch.get('name', 'Link')}", url=ch.get("url", "https://t.me"))])
-        else:
-            url = ch.get("url", "")
-            clean_ch = url.replace("https://t.me/", "").replace("@", "").strip()
-            if clean_ch:
-                channel_link = f"https://t.me/{clean_ch}" if not clean_ch.startswith("-") else url
-                keyboard_buttons.append([InlineKeyboardButton("📢 Kanalga obuna bo'lish", url=channel_link)])
-    
-    cb_data = f"check_sub_{pending_code}" if pending_code else "check_sub"
-    keyboard_buttons.append([InlineKeyboardButton("✅ Obunani tekshirish", callback_data=cb_data)])
-    
-    try:
-        await message.reply_text(bot_texts["sub"], reply_markup=InlineKeyboardMarkup(keyboard_buttons))
-    except:
-        pass
-
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     user_id = str(user.id)
@@ -146,24 +121,44 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             save_data("channels.json", channels)
             await update.message.reply_text(f"✅ Kanal ulandi: {text}", reply_markup=ADMIN_KEYBOARD)
             return
+
         elif state == "waiting_for_movie_file":
-            file_id = update.message.video.file_id if update.message.video else (update.message.document.file_id if update.message.document else update.message.photo[-1].file_id)
+            if update.message.video:
+                file_id = update.message.video.file_id
+            elif update.message.document:
+                file_id = update.message.document.file_id
+            elif update.message.photo:
+                file_id = update.message.photo[-1].file_id
+            else:
+                await update.message.reply_text("❌ Iltimos, video, rasm yoki fayl yuboring!")
+                return
+            
             context.user_data["temp_movie_file_id"] = file_id
             context.user_data["state"] = "waiting_for_movie_name"
             await update.message.reply_text("✍️ Kinoning nomini yozing:")
             return
+
         elif state == "waiting_for_movie_name":
             new_code = str(len(catalog) + 1)
-            catalog.append({"code": new_code, "title": text, "file_id": context.user_data.get("temp_movie_file_id")})
+            file_id = context.user_data.get("temp_movie_file_id")
+            catalog.append({"code": new_code, "title": text, "file_id": file_id})
             save_data("catalog.json", catalog)
             context.user_data["state"] = None
             await update.message.reply_text(f"✅ Kino qo'shildi!\n📌 Kod: {new_code}", reply_markup=ADMIN_KEYBOARD)
             return
+
         elif state == "waiting_for_ad":
             context.user_data["state"] = None
-            count = sum(1 for uid in users if await try_send_ad(context.bot, uid, update.message))
+            count = 0
+            for uid in users:
+                try:
+                    await update.message.copy(chat_id=int(uid))
+                    count += 1
+                except:
+                    pass
             await update.message.reply_text(f"✅ Reklama {count} ta odamga yuborildi!", reply_markup=ADMIN_KEYBOARD)
             return
+
         elif state == "waiting_for_new_admin":
             context.user_data["state"] = None
             try:
@@ -173,12 +168,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except:
                 await update.message.reply_text("❌ Faqat raqam kiriting!", reply_markup=ADMIN_KEYBOARD)
             return
+
         elif state == "waiting_for_vip_card":
             context.user_data["state"] = None
             vip_settings["card"] = text
             save_data("vip_settings.json", vip_settings)
             await update.message.reply_text("✅ Karta yangilandi!", reply_markup=ADMIN_KEYBOARD)
             return
+
         elif state == "waiting_for_search_id":
             context.user_data["state"] = None
             found = next((item for item in catalog if str(item.get("code")) == text), None)
@@ -244,13 +241,6 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         await update.message.reply_text(bot_texts["not_found"])
 
-async def try_send_ad(bot, uid, message):
-    try:
-        await message.copy(chat_id=int(uid))
-        return True
-    except:
-        return False
-
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -271,7 +261,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = "waiting_for_channel"
         await query.message.edit_text("📌 Kanal username yuboring:")
     elif data == "list_channels":
-        await query.message.edit_text("📋 Kanallar:\n" + "\n".join([str(c) for c in channels]))
+        await query.message.edit_text(f"📋 Kanallar:\n" + "\n".join([str(c.get('url', c)) for c in channels]))
     elif data == "add_movie":
         context.user_data["state"] = "waiting_for_movie_file"
         await query.message.edit_text("🎬 Kinoni yuboring:")
