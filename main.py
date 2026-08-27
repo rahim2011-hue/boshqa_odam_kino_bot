@@ -5,7 +5,7 @@ from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-TOKEN = "8048885469:AAFrFokNnwpC4Nh1zEJ2bg2z8uw_p0aAswQ"
+TOKEN = "8048885469:AAG7Wq2p1cObSf38k6enXzLxgdiuDkqI1PI"
 ADMIN_ID = 6682139161
 
 # --- Flask server (Render 24/7 ishlashi uchun) ---
@@ -341,9 +341,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif state == "waiting_for_user_id":
             context.user_data["state"] = None
             target_id = text.strip()
-            if target_id not in users:
-                await update.message.reply_text("❌ Bu ID raqamdagi foydalanuvchi botda topilmadi!", reply_markup=ADMIN_KEYBOARD)
+            if not target_id.isdigit():
+                await update.message.reply_text("❌ Noto'g'ri ID format! Faqat raqam kiriting.", reply_markup=ADMIN_KEYBOARD)
                 return
+            
+            if target_id not in users:
+                users[target_id] = {"name": "Foydalanuvchi", "vip": False, "bypass_sub": False, "referrals": []}
+                save_data("users.json", users)
             
             context.user_data["target_user_id"] = target_id
             u_data = users[target_id]
