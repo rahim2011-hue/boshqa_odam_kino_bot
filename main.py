@@ -446,7 +446,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("📢 Obuna matni", callback_data="set_sub_text")],
                 [InlineKeyboardButton("❌ Topilmadi matni", callback_data="set_not_found_text")],
                 [InlineKeyboardButton("💎 VIP tariflar", callback_data="set_vip_text")],
-                [InlineKeyboardButton("📢 Kino kanali (ID kiritish)", callback_data="set_post_channel")],
+                [InlineKeyboardButton("📢 Kino kanali ulash", callback_data="set_post_channel")],
+                [InlineKeyboardButton("🗑 Kino kanalini o'chirish", callback_data="remove_post_channel")],
                 [InlineKeyboardButton("🔙 Panel", callback_data="back_to_admin")]
             ])
             await update.message.reply_text(f"ℹ️ Bot sozlamalari:\n\n📢 Hozirgi ulangan kino kanali: `{vip_settings.get('channel_id', 'Kiritilmagan ❌')}`", reply_markup=keyboard, parse_mode="Markdown")
@@ -708,6 +709,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["state"] = "waiting_for_post_channel"
         await query.message.edit_text("📢 Kino kanali username yoki ID sini kiriting (masalan: `@kanal` yoki `-100...`):")
 
+    elif data == "remove_post_channel":
+        vip_settings["channel_id"] = ""
+        save_data("vip_settings.json", vip_settings)
+        await query.answer("✅ Kino kanali o'chirildi!", show_alert=True)
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("🎬 Start matni", callback_data="set_start_text")],
+            [InlineKeyboardButton("📢 Obuna matni", callback_data="set_sub_text")],
+            [InlineKeyboardButton("❌ Topilmadi matni", callback_data="set_not_found_text")],
+            [InlineKeyboardButton("💎 VIP tariflar", callback_data="set_vip_text")],
+            [InlineKeyboardButton("📢 Kino kanali ulash", callback_data="set_post_channel")],
+            [InlineKeyboardButton("🗑 Kino kanalini o'chirish", callback_data="remove_post_channel")],
+            [InlineKeyboardButton("🔙 Panel", callback_data="back_to_admin")]
+        ])
+        await query.message.edit_text(f"ℹ️ Bot sozlamalari:\n\n📢 Hozirgi ulangan kino kanali: `Kiritilmagan ❌`", reply_markup=keyboard, parse_mode="Markdown")
+
     elif data == "add_movie":
         context.user_data["state"] = "waiting_for_movie_file"
         await query.message.edit_text("🎬 Kinoni video yoki fayl ko'rinishida yuboring:")
@@ -726,7 +742,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("del_movie_"):
         movie_code = data.replace("del_movie_", "")
-        
         catalog[:] = [item for item in catalog if str(item.get("code")) != movie_code]
         save_data("catalog.json", catalog)
         
