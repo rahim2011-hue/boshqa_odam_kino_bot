@@ -67,8 +67,10 @@ USER_KEYBOARD = ReplyKeyboardMarkup([
 async def check_telegram_subscription(bot, user_id):
     if user_id == ADMIN_ID or user_id in admins:
         return True
-    if str(user_id) in users and users.get(str(user_id), {}).get("vip", False):
-        return True
+    str_uid = str(user_id)
+    if str_uid in users:
+        if users[str_uid].get("vip", False) or users[str_uid].get("bypass_sub", False):
+            return True
 
     tg_channels = [ch for ch in channels if isinstance(ch, dict) and ch.get("type", "tg") == "tg"]
     if not tg_channels:
@@ -120,7 +122,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["state"] = None
     
     if user_id not in users:
-        users[user_id] = {"name": user.full_name, "vip": False, "referrals": []}
+        users[user_id] = {"name": user.full_name, "vip": False, "bypass_sub": False, "referrals": []}
         save_data("users.json", users)
 
     is_admin = (user.id in admins or user.id == ADMIN_ID)
@@ -336,13 +338,53 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ VIP matni yangilandi!", reply_markup=ADMIN_KEYBOARD)
             return
 
-        elif state == "waiting_for_search_id":
+        elif state == "waiting_for_user_id":
             context.user_data["state"] = None
-            found = next((item for item in catalog if str(item.get("code")).strip() == text.strip()), None)
-            if found:
-                await update.message.reply_video(video=found["file_id"], caption=f"🎬 {found['title']}\n📌 Kod: {found['code']}")
-            else:
-                await update.message.reply_text(bot_texts["not_found"])
+            target_id = text.strip()
+            if target_id not in users:
+                await update.message.reply_text("❌ Bu ID raqamdagi foydalanuvchi botda topilmadi!", reply_markup=ADMIN_KEYBOARD)
+                return
+            
+            context.user_data["target_user_id"] = target_id
+            u_data = users[target_id]
+            is_u_admin = (int(target_id) in admins or int(target_id) == ADMIN_ID)
+            
+            info_msg = (
+                f"👤 Foydalanuvchi ma'lumotlari:\n"
+                f"🆔 ID: `{target_id}`\n"
+                f"👤 Ism: {u_data.get('name', 'Nomaʼlum')}\n"
+                f"💎 VIP status: {'Ha ✅' if u_data.get('vip') else 'Yoʻq ❌'}\n"
+                f"🚀 Majburiy obunadan ozod: {'Ha ✅' if u_data.get('bypass_sub') else 'Yoʻq ❌'}\n"
+                f"👮‍♂️ Admin: {'Ha ✅' if is_u_admin else 'Yoʻq ❌'}"
+            )
+            
+            kb = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💎 VIP berish/olish", callback_data=f"adm_vip_{target_id}")],
+                [InlineKeyboardButton("🚀 Obunadan halos qilish", callback_data=f"adm_bypass_{target_id}")],
+                [InlineKeyboardButton("👮‍♂️ Adminlik berish/olish", callback_data=f"adm_admin_{target_id}")],
+                [InlineKeyboardButton("🔙 Panel", callback_data="back_to_admin")]
+            ])
+            await update.message.reply_text(info_msg, parse_mode="Markdown", reply_markup=kb)
+            return
+
+        elif state == "waiting_for_vip_days":
+            context.user_data["state"] = None
+            target_id = context.user_data.get("target_user_id")
+            try:
+                days = int(text)
+                if 1 <= days <= 30:
+                    if target_id in users:
+                        users[target_id]["vip"] = True
+                        save_data("users.json", users)
+                        await update.message.reply_text(f"✅ Foydalanuvchiga {days} kunga VIP status berildi!", reply_markup=ADMIN_KEYBOARD)
+                        try:
+                            await context.bot.send_message(chat_id=int(target_id), text=f"🎉 Tabriklaymiz! Sizga admin tomonidan {days} kunga VIP status berildi!")
+                        except:
+                            pass
+                else:
+                    await update.message.reply_text("❌ Faqat 1 dan 30 gacha bo'lgan sonni kiriting!", reply_markup=ADMIN_KEYBOARD)
+            except:
+                await update.message.reply_text("❌ Noto'g'ri format! Faqat raqam yuboring.", reply_markup=ADMIN_KEYBOARD)
             return
 
         elif state == "waiting_for_new_admin":
@@ -442,8 +484,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         elif text == "🔍 ID qidirish":
-            context.user_data["state"] = "waiting_for_search_id"
-            await update.message.reply_text("🔍 Kino kodini kiriting:")
+            context.user_data["state"] = "waiting_for_user_id"
+            await update.message.reply_text("🔍 Boshqarish uchun foydalanuvchining Telegram ID raqamini kiriting:")
             return
 
     if not is_admin:
@@ -547,6 +589,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except:
             await query.message.delete()
             await context.bot.send_message(chat_id=user_id, text="👑 Admin paneli:", reply_markup=ADMIN_KEYBOARD)
+
+    elif data.startswith("adm_vip_"):
+        t_id = data.replace("adm_vip_", "")
+        context.user_data["target_user_id"] = t_id
+        context.user_data["state"] = "waiting_for_vip_days"
+        await query.message.edit_text("📅 Foydalanuvchiga necha kun VIP berish kerak? (1 dan 30 gacha raqam kiriting):")
+
+    elif data.startswith("adm_bypass_"):
+        t_id = data.replace("adm_bypass_", "")
+        if t_id in users:
+            current = users[t_id].get("bypass_sub", False)
+            users[t_id]["bypass_sub"] = not current
+            save_data("users.json", users)
+            status = "ozod qilindi ✅" if not current else "cheklov qo'yildi ❌"
+            await query.answer(f"Majburiy obunadan {status}", show_alert=True)
+            try: await query.message.delete()
+            except: pass
+            await context.bot.send_message(chat_id=user_id, text=f"✅ Foydalanuvchi majburiy obunadan {status}", reply_markup=ADMIN_KEYBOARD)
+
+    elif data.startswith("adm_admin_"):
+        t_id_int = int(data.replace("adm_admin_", ""))
+        if t_id_int == ADMIN_ID:
+            await query.answer("⚠️ Asosiy adminni o'chirib bo'lmaydi!", show_alert=True)
+            return
+        if t_id_int in admins:
+            admins.remove(t_id_int)
+            save_data("admins.json", admins)
+            await query.answer("👮‍♂️ Adminlik huquqi olib tashlandi!", show_alert=True)
+        else:
+            admins.append(t_id_int)
+            save_data("admins.json", admins)
+            await query.answer("👮‍♂️ Adminlik huquqi berildi!", show_alert=True)
+        try: await query.message.delete()
+        except: pass
+        await context.bot.send_message(chat_id=user_id, text="✅ Admin huquqlari yangilandi!", reply_markup=ADMIN_KEYBOARD)
 
     elif data == "bot_users_list":
         await query.message.edit_text(f"👥 Bot foydalanuvchilari soni: {len(users)} ta", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_admin")]]))
