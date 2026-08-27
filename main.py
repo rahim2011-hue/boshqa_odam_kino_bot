@@ -5,7 +5,7 @@ from flask import Flask
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, filters, ContextTypes
 
-TOKEN = "8048885469:AAEc_iOxnCJI-6M7DIH5M1rK_KiznHddjoo"
+TOKEN = "8048885469:AAFrFokNnwpC4Nh1zEJ2bg2z8uw_p0aAswQ"
 ADMIN_ID = 6682139161
 
 # --- Flask server (Render 24/7 ishlashi uchun) ---
